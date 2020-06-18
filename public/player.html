@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta data-hid="description" name="description" content="">
+    <title>Turnup Games - </title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/2.3.0/socket.io.js"></script>
+    <script src="https://unpkg.com/interactjs/dist/interact.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.11"></script>
+    <link rel="stylesheet" href="app.css">
+  </head>
+  <body>
+    <div id="app" class="app">
+      <div v-if="view === 'enter-game'">
+        <div style="text-align: center; padding-top: 2rem;">
+          <img
+            style="width: 200px; margin: 0 auto;"
+            src="https://app.screenprinter.io/logo/turntup_logo.png" alt="turntup">
+        </div>
+        <div style="padding-bottom: 1rem;">
+          <input v-model="player.roomCode" placeholder="Room Code" type="text">
+          <div
+            style="color: #E30000; font-size: 14px; padding-top: 0.5rem;"
+            v-if="errors.includes('roomCode')">Room number must be 4 characters long.</div>
+        </div>
+        <div style="padding-bottom: 1rem;">
+          <input v-model="player.name" placeholder="Name" type="text" minlength="2" maxlength="8">
+          <div
+            style="color: #E30000; font-size: 14px; padding-top: 0.5rem;"
+            v-if="errors.includes('playerName')">Name must be between 2 to 8 characters.</div>
+        </div>
+        <div
+          style="color: #E30000; font-size: 14px; padding-top: 0.5rem;"
+          v-if="errors.includes('noRoomCode')">
+          Wrong room code
+        </div>
+        <div style="padding-bottom: 1rem;">
+          <button
+            style="width: 308px;"
+            class="btn"
+            @click="enterGame">
+            {{ (this.player.roomCode === this.gameInfo.roomCode && this.gameInfo.started) ? 'Rejoin': 'Join' }} Game
+          </button>
+        </div>
+        <div>
+          <button @click="leaveGame">Leave gAME</button>
+        </div>
+      </div>
+      <div v-if="view === 'player-waiting-room'">
+        <div class="waiting-room-picture"
+          style="width: 100%; text-align: center; padding-bottom: 14px;">
+          <img
+            style="height: 100px; margin: 0 auto;"
+            src="https://images.mydoorsign.com/img/lg/S/waiting-area-hospital-sign-s2-0278_no-dir.png" alt="waiting room">
+        </div>
+        <div class="user-name-edit-wrapper">
+          <div v-if="!editName" style="display: flex; justify-content: space-between;">
+            <h2>{{player.name}}</h2>
+            <button class="button-to-link" @click="editName = true">Edit Name</button>
+          </div>
+          <div
+            v-else
+            style="padding-bottom: 1rem;">
+            <input
+              style="width: 100% !important;max-width: 100%;"
+              v-model="newName" placeholder="Name" type="text" minlength="2" maxlength="8">
+            <div
+              style="color: #E30000; font-size: 14px; padding-top: 0.5rem;"
+              v-if="errors.includes('playerName')">Name must be between 2 to 8 characters.</div>
+            <div style="display: flex; padding-top: 7px; justify-content: flex-end;">
+              <button
+                style="margin-right: 5px; background: white; color: gray; border: 1px solid lightgray;"
+                class="btn medium"
+                @click="editName = false">Cancel</button>
+              <button class="btn medium" @click="updateUserName">Save</button>
+            </div>
+          </div>
+        </div>
+        <div
+          class="line-splitter"
+          style="width: 100%; display: flex; justify-content: center;">
+          <div style="width: 100%;height: 1px;background: #f4f4f4;margin-bottom: 2rem;">&nbsp;</div>
+        </div>
+        <div class="shit-talk-wrapper">
+          <div>
+            <textarea 
+              v-model="shitTalk"
+              placeholder="Enter some 💩 talking and see it on the main screen"
+              name="shittalk" 
+              id="" 
+              maxlength="110"
+              style="width: 100%;"
+              cols="30" 
+              rows="10"></textarea>
+            <div style="display: flex; padding-top: 7px; justify-content: flex-end;">
+              <button
+                style="background: #fff; border: 1px solid #dcdfe6; color: #606266;"
+                class="btn medium" @click="sendShitTalk">Send 💩 Talk</button>
+            </div>
+          </div>
+        </div>
+        <div class="startgame-wrapper"
+          v-if="player.id === gameInfo.selectedPlayerId"
+          style="display: flex; justify-content: center; padding: 1rem 0; flex-wrap: wrap;">
+          <div style="padding: 1rem 0; color: white;">
+            <small>When everyone has joined and is ready, click "Start Game"</small>
+          </div>
+          <button
+            style="width: 100%; background: #67c23a;"
+            class="btn"
+            @click="startGame">Start Game</button>
+        </div>
+        <!-- <button @click="resetPlayer">reset</button> -->
+        <button @click="leaveGame">Leave game</button>
+      </div>
+      <div v-if="view === 'game-play'" style="position: relative; min-height: 600px; width: 100vw;;">
+        <div v-if="selectedPlayer" class="game-play-header" style="max-width: 400px;margin: 0px auto;height: 50px;display: flex;justify-content: center;">
+          <h2 style="font-size: 16px;" v-if="selectedPlayer.id === player.id && gameInfo.kingsLeft !== 0">Your turn - Select a card: </h2>
+          <h2 style="font-size: 16px;" v-if="selectedPlayer.id !== player.id && gameInfo.kingsLeft !== 0">"Waiting on {{ selectedPlayer.name }} to choose a card.</h2>
+        </div>
+        <div class="card-picker" v-if="gameInfo.cards && gameInfo.cards.length > 0 && selectedPlayer.id === player.id" style="width: 400px;height: 400px; ">
+          <div
+            v-for="(card, index) in gameInfo.cards"
+            :key="index"
+            style="transform: translate(33.2406px, -5.97913px) rotate(90deg);"
+            :style="getCardStyle(card)"
+            v-bind:data-card-icon="card.icon"
+            v-bind:data-card-info="JSON.stringify(card)"
+            v-bind:data-init-x="card.initCardPlacement.x"
+            v-bind:data-init-y="card.initCardPlacement.y"
+            v-bind:data-init-rotate="card.initCardPlacement.rotate"
+            :class="{ 'selected': card.icon === (cardPickerSelection && cardPickerSelection.icon)}"
+            class="card draggable">
+          </div>
+        </div>
+        <div v-if="selectedPlayer.id !== player.id">
+          <div
+            class="line-splitter"
+            style="width: 100%; display: flex; justify-content: center;">
+            <div style="width: 100%;height: 1px;background: #f4f4f4;margin-bottom: 2rem;">&nbsp;</div>
+          </div>
+          <div class="shit-talk-wrapper">
+            <div>
+              <textarea 
+                v-model="shitTalk"
+                placeholder="Enter some 💩 talking and see it on the main screen"
+                name="shittalk" 
+                id="" 
+                maxlength="110"
+                style="width: 100%;"
+                cols="30" 
+                rows="10"></textarea>
+              <div style="display: flex; padding-top: 7px; justify-content: flex-end;">
+                <button
+                  style="background: #fff; border: 1px solid #dcdfe6; color: #606266;"
+                  class="btn medium" @click="sendShitTalk">Send 💩 Talk</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div
+          class="user-action" 
+          v-if="selectedPlayer.id === player.id && !gameInfo.selectedCard"
+          style="display: flex; justify-content: center; margin-top: 2rem;">
+          <button
+            :disabled="!cardPickerSelection"
+            :style="{'background': !cardPickerSelection ? '#6e6332': null}"
+            class="btn"
+            @click="drawCard">
+            {{ !cardPickerSelection ? '..Waiting' : 'Flip Card' }}
+          </button>
+        </div>
+        <div
+          v-if="gameInfo.selectedCard && gameInfo.selectedCard.icon.includes('K')"
+          class="end-of-game">
+          <div style="position: fixed; left: 0; right: 0; top: 0; bottom: 0; background: #000000d1; z-index: 0;">&nbsp;</div>
+          <div 
+            v-if="gameInfo.kingsLeft === 0"
+            style="position: fixed; left: 0; right: 0;top: 0; bottom: 0; z-index: 1;">
+              <img src="https://media.giphy.com/media/3ov9k8fmDbIqzzbsLS/giphy.gif">
+          </div>
+        </div>
+        <div id="selected-card-animate-in-out" ref="cardSelectedEl" class="selected-card-animate-wrapper">
+          <div class="selected-card-wrapper">
+            <div v-if="gameInfo.selectedCard">
+              <div
+                class="card-suite"
+                style="height: 40px;position: absolute;top: 32px;left: 32px;">
+                <div>
+                  {{ gameInfo.selectedCard.icon.includes('10') ? '10' : gameInfo.selectedCard.icon[0] }}
+                  <br>
+                  {{ gameInfo.selectedCard.icon.includes('10') ? gameInfo.selectedCard.icon.replace('10', '') : gameInfo.selectedCard.icon[1] }}
+                </div>
+              </div>
+              <div
+                class="card-description-gif"
+                style="height: 356px; padding: 15px 32px;">
+                <h2 style="font-size: 24px;" v-if="selectedPlayer.id === player.id && gameInfo.kingsLeft === 0">Drink Up!</h2>
+                <h2 style="font-size: 24px;" v-if="selectedPlayer.id !== player.id && gameInfo.kingsLeft === 0">{{ selectedPlayer.name }} choose the last king!</h2>
+                <div class="card-title">
+                  {{ gameInfo.selectedCard.title }}
+                </div>
+                <div class="card-description">
+                  {{ gameInfo.selectedCard.description }}
+                </div>
+                <div class="card-gif" style="overflow: hidden;">
+                  <img 
+                    :src="gameInfo.selectedCard.gif"
+                    alt=""
+                    style="width: 200px;  height: 200px;">
+                </div>
+              </div>
+              <div
+                class="card-suite"
+                style="height: 40px;position: absolute;bottom: 32px;right: 32px;transform: rotate(180deg);">
+                <div>
+                  {{ gameInfo.selectedCard.icon.includes('10') ? '10' : gameInfo.selectedCard.icon[0] }}
+                  <br>
+                  {{ gameInfo.selectedCard.icon.includes('10') ? gameInfo.selectedCard.icon.replace('10', '') : gameInfo.selectedCard.icon[1] }}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div 
+          class="finished-turn-wrapper" 
+          v-if="selectedPlayer.id === player.id && gameInfo.selectedCard"
+          style="display: flex; justify-content: center; margin-top: 2rem; position: fixed; z-index: 100; bottom: 16px; left: 0; right: 0;">
+          <button
+            @click="finishedTurn"
+            class="btn">
+            Done
+          </button>
+        </div>
+        <button @click="leaveGame">Leave game</button>
+      </div>
+      <div v-if="view === 'GameEnded'">
+        <h1>Game Ended</h1>
+        <p>Thanks for playing Turntup Games!</p>
+        <button
+          class="btn"
+          @click="view = 'enter-game'">
+          Play a new game
+        </button>
+      </div>
+    </div>
+    <!-- script -->
+    <script>
+      const initGameInfo = {
+        id: '',
+        view: '',
+        selectedPlayerId: '',
+        selectedCard: null,
+        started: false,
+        roomCode: '',
+        cards: [],
+        players: []
+      }
+
+      var app = new Vue({
+        el: '#app',
+        data: {
+          view: 'enter-game',
+          editName: false,
+          newName: '',
+          shitTalk: '',
+          player: {
+            id: '',
+            name: '',
+            roomCode: ''
+          },
+          gameInfo: {
+            id: '',
+            view: '',
+            kingsLeft: 4,
+            selectedPlayerId: '',
+            shitTalking: [],
+            selectedCard: null,
+            started: false,
+            roomCode: '',
+            cards: [],
+            players: []
+          },
+          errors: [],
+          cardPickerSelection: null,
+          cardPickerSelectionEl: null,
+          socketio: null
+        },
+        mounted () {
+          if (localStorage.getItem('player')) {
+            let storedPlayer = JSON.parse(localStorage.getItem('player'))
+            this.player.id = storedPlayer.id
+            this.player.name = storedPlayer.name
+            this.player.roomCode = storedPlayer.roomCode
+          }
+
+          this.socketio = io()
+
+          this.socketio.on('wrongRoomCode', (data) => {
+            if (data.id === this.player.id) {
+              this.errors.push('noRoomCode')
+              this.view = 'enter-game'
+            }
+            console.log('wrongRoomCode data →', data)
+            console.log('=================================================')
+          })
+
+          this.socketio.on('gameInfo', (updatedGameInfo) => {
+            console.log('gameInfo updatedGameInfo →', updatedGameInfo)
+            Object.keys(updatedGameInfo).forEach(key => {
+              this.gameInfo[key] = updatedGameInfo[key]
+            })
+          })
+
+          this.socketio.on('userKickedOut', (kickedOutPlayer) => {
+            console.log('AM I IN HERE ??? 🤔 | userKickedOut - kickedOutPlayer', kickedOutPlayer)
+            if (this.player.id === kickedOutPlayer.id) {
+              this.view = 'enter-game'
+              this.player.name = ''
+              this.player.id = ''
+              this.player.roomCode = ''
+              localStorage.removeItem('player')
+              alert('Sorry, You have been kicked out by the game admin.')
+            }
+          })
+
+          this.socketio.on('gameEnded', () => {
+            localStorage.removeItem('player')
+            Object.keys(initGameInfo).forEach(key => {
+              this.gameInfo[key] = initGameInfo[key]
+            })
+
+            this.view = 'GameEnded'
+          })
+
+          const dragMoveListener = (event) => {
+            var target = event.target
+            // keep the dragged position in the data-x/data-y attributes
+            var x = (parseFloat(target.getAttribute('data-x')) || target.getAttribute('data-init-x') || 0) + event.dx
+            var y = (parseFloat(target.getAttribute('data-y')) || target.getAttribute('data-init-y') || 0) + event.dy
+
+            // translate the element
+            target.style.webkitTransform =
+              target.style.transform =
+                'translate(' + x + 'px, ' + y + 'px) rotate(' + (target.getAttribute('data-init-rotate') || 90)+ 'deg)'
+
+            // update the posiion attributes
+            target.setAttribute('data-x', x)
+            target.setAttribute('data-y', y)
+          }
+
+          // this function is used later in the resizing and gesture demos
+          window.dragMoveListener = dragMoveListener
+
+          const vueInstance = this
+
+          interact('.draggable').draggable({
+            // enable inertial throwing
+            inertia: true,
+            // keep the element within the area of it's parent
+            modifiers: [
+              interact.modifiers.restrictRect({
+                restriction: 'parent',
+                endOnly: true
+              })
+            ],
+            // enable autoScroll
+            autoScroll: false,
+
+            listeners: {
+              // call this function on every dragmove event
+              move: dragMoveListener,
+
+              // call this function on every dragend event
+              end (event) {
+                // let cardInfo = event.target.getAttribute('data-card-info')
+                // vueInstance.cardPickerSelection = JSON.parse(cardInfo)
+              }
+            }
+          }).on('down', (event) => {
+            let target = event.target
+
+            // Array.from(document.querySelectorAll('.draggable')).forEach(el => {
+            //   el.classList.remove('selected')
+            // })
+
+            // target.classList.add('selected')
+
+            let cardInfo = target.getAttribute('data-card-info')
+            vueInstance.cardPickerSelection = JSON.parse(cardInfo)
+            console.log('vueInstance.cardPickerSelection →', vueInstance.cardPickerSelection)
+            let cardPickerSelectionEl = document.querySelector(`[data-card-icon='${vueInstance.cardPickerSelection.icon}']`)
+            this.cardPickerSelectionEl = cardPickerSelectionEl
+            console.log('123 cardPickerSelectionEl →', cardPickerSelectionEl)
+          })
+        },
+        computed: {
+          selectedPlayer () {
+            return this.gameInfo.selectedPlayerId ? this.gameInfo.players.find(player => player.id === this.gameInfo.selectedPlayerId) : ''
+          }
+        },
+        watch: {
+          'gameInfo.started' (started) {
+            if (started) {
+              this.view = 'game-play'
+              this.editName = false
+            }
+          },
+          'gameInfo.selectedCard' (card) {
+            if (card) {
+              setTimeout(() => {
+                document.getElementById('selected-card-animate-in-out').style.left = '50%'
+                document.getElementById('selected-card-animate-in-out').style.marginLeft = '-150px'
+              }, 10)
+            } else {
+              setTimeout(() => {
+                document.getElementById('selected-card-animate-in-out').style.left = '-2000px'
+              }, 10)
+            }
+          }
+        },
+        methods: {
+          getCardStyle (card) {
+            let initStyles = `transform: translate(${card.initCardPlacement.x || '33.2406'}px, ${card.initCardPlacement.y || '-5.97913'}px) rotate(${card.initCardPlacement.rotate || '90'}deg);`
+            return initStyles
+          },
+          drawCard () {
+            console.log('drawCard this.cardPickerSelectionEl →', this.cardPickerSelectionEl)
+            if (!this.cardPickerSelection) return
+
+            this.gameInfo.selectedCard = { ...this.cardPickerSelection }
+            this.socketio.emit('cardSelected', this.gameInfo)
+
+            setTimeout(() => {
+              console.log('→ inside timeout')
+              document.getElementById('selected-card-animate-in-out').style.left = '50px'
+            }, 10)
+          },
+          finishedTurn () {
+            let updatedPlayersList = [...this.gameInfo.players]
+            let getLastPlayer = updatedPlayersList.shift()
+            updatedPlayersList.push(getLastPlayer)
+            
+            let animateCard = document.getElementById('selected-card-animate-in-out')
+            if (animateCard) {
+              animateCard.style.left = '-2000px'
+            }
+
+            let updatedDeck = this.gameInfo.cards.filter(c => c.icon !== this.cardPickerSelection.icon)
+            console.log('this.cardPickerSelection.icon →', this.cardPickerSelection.icon)
+            console.log('updatedDeck →', updatedDeck)
+
+            this.gameInfo.selectedCard = null
+            this.gameInfo.selectedPlayerId = updatedPlayersList[0].id
+            this.gameInfo.players = updatedPlayersList
+            this.gameInfo.cards = updatedDeck
+
+            this.cardPickerSelection = null
+            this.cardPickerSelectionEl = null
+
+            if (this.gameInfo.kingsLeft === 0) {
+              this.socketio.emit('endGame', this.gameInfo)
+            } else {
+              this.socketio.emit('finishedTurn', this.gameInfo)
+            }
+          },
+          startGame () {
+            this.socketio.emit('startGame', this.gameInfo)
+          },
+          leaveGame () {
+            let updatedPlayersList = [...this.gameInfo.players]
+
+            updatedPlayersList = updatedPlayersList.filter(p => p.id !== this.player.id)
+
+            this.gameInfo.players = updatedPlayersList
+            this.socketio.emit('updatedPlayersInfo', this.gameInfo)
+
+            this.view = 'enter-game'
+            this.player.name = ''
+            this.player.id = ''
+            this.player.roomCode = ''
+            localStorage.removeItem('player')
+          },
+          enterGame () {
+            
+
+            this.errors = []
+
+            if (!this.player.roomCode || this.player.roomCode.length !== 4) {
+              this.errors.push('roomCode')
+            }
+            
+            if (!this.player.name || this.player.name.length < 2 || this.player.name.length > 8) {
+              this.errors.push('playerName')
+            }
+
+            if (this.errors.length > 0) return
+
+            this.player.id = performance.now() + Date.now()
+
+            let userObj = {
+              id: this.player.id,
+              name: this.player.name,
+              roomCode: this.player.roomCode.toUpperCase()
+            }
+
+            this.newName = this.player.name
+
+            localStorage.setItem('player', JSON.stringify(userObj))
+            this.socketio.emit('entergame', userObj)
+            this.view = 'player-waiting-room'
+          },
+          updateUserName () {
+            let updatedPlayersList = [...this.gameInfo.players]
+
+            updatedPlayersList.forEach(p => {
+              if (p.id === this.player.id) {
+                p.name = this.newName
+              }
+            })
+
+            this.player.name = this.newName
+
+            this.gameInfo.players = updatedPlayersList
+            this.socketio.emit('updatedPlayersInfo', this.gameInfo)
+            this.editName = false
+
+            console.log('updatedPlayersList →', updatedPlayersList)
+          },
+          resetPlayer () {
+            localStorage.removeItem('player')
+          },
+          sendShitTalk () {
+            if (this.shitTalk) {
+              let newShitTalk = {
+                player: this.player,
+                shit: this.shitTalk
+              }
+
+              this.gameInfo.shitTalking.push(newShitTalk)
+              this.socketio.emit('playerShitTalked', this.gameInfo)
+              this.shitTalk = ''
+            }
+          }
+        }
+      })
+    </script>
+  </body>
+</html>

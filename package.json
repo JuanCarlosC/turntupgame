@@ -1,0 +1,21 @@
+{
+  "name": "websockets-socket.io",
+  "version": "1.0.0",
+  "engines": {
+    "node": "12.x"
+  },
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "dev": "heroku local web",
+    "start": "node server.js",
+    "deploy": "git add .; git commit -am \"default commit message\"; git push heroku master;"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.17.1",
+    "socket.io": "^2.3.0"
+  }
+}
